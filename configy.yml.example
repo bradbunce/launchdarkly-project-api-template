@@ -1,0 +1,52 @@
+# Project configuration
+project:
+  name: "Example Project Name"
+  key: "example-project-key"
+  tags: ["created-via-api"]
+
+# Default environment handling
+defaults:
+  environment:
+    confirm_changes: false
+    require_comments: false
+    tags: ["created-via-api"]
+  
+  # Control whether to remove the default 'test' environment
+  remove_default_test_env: false  # Set to true if you want to remove the default test environment
+
+# Environment configuration
+# Note: LaunchDarkly creates two default environments when a project is created:
+# - 'production': This environment is required and cannot be deleted. You can update its settings below.
+# - 'test': This environment will be kept or deleted based on 'remove_default_test_env' setting above.
+
+environments:
+  # Production environment is required. These settings will update the default production environment.
+  - name: "Production"
+    key: "production"  # Must be 'production' to match default environment
+    color: "417505"    # Green
+    production: true
+    confirm_changes: true
+    require_comments: true
+
+  - name: "Staging"
+    key: "staging"
+    color: "F5A623"  # Orange
+    production: false
+
+  - name: "Testing"
+    key: "testing"
+    color: "0275d8"  # Blue
+    production: false
+
+  - name: "Development"
+    key: "development"
+    color: "666666"  # Gray
+    production: false
+
+# Optional: Feature flags configuration
+# Uncomment and modify this section to create feature flags
+# feature_flags:
+#   - key: "enable-new-feature"
+#     name: "Enable New Feature"
+#     description: "Controls the release of new feature"
+#     type: "boolean"
