@@ -108,12 +108,12 @@ defaults:
 
 #### Project Settings
 - `name`: Display name of your project
-- `key`: Unique identifier for your project
+- `key`: Unique identifier for your project (automatically converted to lowercase)
 - `tags`: List of tags to apply to the project
 
 #### Environment Settings
 - `name`: Display name of the environment
-- `key`: Unique identifier for the environment
+- `key`: Unique identifier for the environment (automatically converted to lowercase)
 - `color`: Hex color code for the environment
 - `production`: Boolean indicating if this is a production environment
 - `confirm_changes`: Require confirmation for flag changes
@@ -121,17 +121,38 @@ defaults:
 - `tags`: List of tags to apply to the environment
 
 #### Approval Settings (Production Environment)
+
+For ServiceNow Integration:
 - `required`: Enable approval workflow
 - `bypass_approvals_for_pending_changes`: Allow bypassing approvals for scheduled changes
 - `min_num_approvals`: Minimum number of approvals required
 - `can_review_own_request`: Allow users to review their own requests
 - `can_apply_declined_changes`: Allow applying previously declined changes
 - `auto_apply_approved_changes`: Automatically apply changes after approval
-- `service_kind`: Integration service type (e.g., "servicenow")
-- `service_config`: Service-specific configuration
+- `service_kind`: Set to "servicenow"
+- `service_config`: ServiceNow-specific configuration
   - `detail_column`: Column for change justification
   - `template`: ServiceNow template ID (uses environment variable)
 - `required_approval_tags`: List of tags requiring approval
+
+For LaunchDarkly Native Approvals:
+- Flag Approvals (configured in approvalSettings):
+  - `required`: Enable flag approval workflow
+  - `min_num_approvals`: Minimum approvals needed for flags
+  - `can_review_own_request`: Allow self-review of flag changes
+  - `can_apply_declined_changes`: Allow applying declined flag changes
+  - `required_approval_tags`: Tags requiring flag approval
+  - `service_kind`: Set to "launchdarkly"
+  - `service_config`: Empty object for native approvals
+
+- Segment Approvals (configured in resourceApprovalSettings.segment):
+  - `required`: Enable segment approval workflow
+  - `min_num_approvals`: Minimum approvals needed for segments
+  - `can_review_own_request`: Allow self-review of segment changes
+  - `can_apply_declined_changes`: Allow applying declined segment changes
+  - `required_approval_tags`: Tags requiring segment approval
+  - `service_kind`: Set to "launchdarkly"
+  - `service_config`: Empty object for native approvals
 
 #### Default Settings
 - `confirm_changes`: Default setting for requiring change confirmation
@@ -140,6 +161,15 @@ defaults:
 - `remove_default_test_env`: Whether to remove the default test environment
 
 ## Usage
+
+### Key Case Sensitivity
+
+Both scripts (`ld_project_setup.py` and `update_workflow_approvals.py`) handle case sensitivity automatically:
+- Project keys are converted to lowercase before any API operations
+- Environment keys are converted to lowercase before any API operations
+- This ensures consistency with LaunchDarkly's API requirements
+- Display names can still use any case format
+- You can use any case in your configuration files - the scripts will handle the conversion
 
 ### Creating a New Project
 
