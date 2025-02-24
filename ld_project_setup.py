@@ -10,10 +10,14 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# Get API key from environment variable
+# Get environment variables
 API_KEY = os.getenv('LD_API_KEY')
 if not API_KEY:
     raise ValueError("LD_API_KEY not found in environment variables")
+
+SERVICENOW_TEMPLATE_SYS_ID = os.getenv('SERVICENOW_TEMPLATE_SYS_ID')
+if not SERVICENOW_TEMPLATE_SYS_ID:
+    raise ValueError("SERVICENOW_TEMPLATE_SYS_ID not found in environment variables")
 
 BASE_URL = 'https://app.launchdarkly.com/api/v2'
 
@@ -173,6 +177,29 @@ def update_environment(project_key, env_key, env_config, defaults):
             'op': 'replace',
             'path': '/tags',
             'value': new_tags
+        })
+
+    # Update approval settings if configured
+    if 'approval_settings' in env_config:
+        approval_settings = {
+            'required': env_config['approval_settings']['required'],
+            'bypassApprovalsForPendingChanges': env_config['approval_settings']['bypass_approvals_for_pending_changes'],
+            'minNumApprovals': env_config['approval_settings']['min_num_approvals'],
+            'canReviewOwnRequest': env_config['approval_settings']['can_review_own_request'],
+            'canApplyDeclinedChanges': env_config['approval_settings']['can_apply_declined_changes'],
+            'autoApplyApprovedChanges': env_config['approval_settings']['auto_apply_approved_changes'],
+            'serviceKind': env_config['approval_settings']['service_kind'],
+            'serviceConfig': env_config['approval_settings']['service_config'],
+            'requiredApprovalTags': env_config['approval_settings']['required_approval_tags']
+        }
+        # Replace template placeholder with actual value
+        if approval_settings['serviceConfig'].get('template') == '${SERVICENOW_TEMPLATE_SYS_ID}':
+            approval_settings['serviceConfig']['template'] = SERVICENOW_TEMPLATE_SYS_ID
+            
+        patch_operations.append({
+            'op': 'replace',
+            'path': '/approvalSettings',
+            'value': approval_settings
         })
 
     if patch_operations:
