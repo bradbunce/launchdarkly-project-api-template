@@ -13,10 +13,18 @@ The script (`ld_project_setup.py`) automates the following tasks:
 
 ## Prerequisites
 
-- Python 3.x
-- LaunchDarkly API access token
-- ServiceNow template system ID (for workflow approvals)
-- Required Python packages (see Installation)
+Before using this script, ensure you have:
+
+1. **ServiceNow Integration Setup**
+   - The ServiceNow integration must be enabled and configured on your LaunchDarkly instance
+   - Follow the [LaunchDarkly ServiceNow Integration Guide](https://launchdarkly.com/docs/integrations/servicenow) to set this up
+   - Once configured, workflow approvals will use ServiceNow on environments where they are defined
+
+2. **Technical Requirements**
+   - Python 3.x
+   - LaunchDarkly API access token
+   - ServiceNow template system ID (obtained after ServiceNow integration setup)
+   - Required Python packages (see Installation)
 
 ## Installation
 
