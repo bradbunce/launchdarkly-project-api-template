@@ -79,15 +79,79 @@ def handle_response(response, operation):
         logging.error(f"Response body: {response.text}")
         raise Exception(f"API error during {operation}: {str(e)}")
 
-def create_project(config):
-    """Create a new project using configuration"""
-    logging.info("Creating new project...")
-    url = f'{BASE_URL}/projects'
+def get_project(project_key):
+    """Get a project by key"""
+    url = f'{BASE_URL}/projects/{project_key}'
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 404:
+            return None
+        result = handle_response(response, f"getting project ({project_key})")
+        time.sleep(2)
+        return result
+    except Exception as e:
+        logging.warning(f"Error retrieving project {project_key}: {str(e)}")
+        return None
+
+def get_user_confirmation(prompt):
+    """Get user confirmation with yes/no prompt"""
+    while True:
+        response = input(f"{prompt} (yes/no): ").lower().strip()
+        if response in ['yes', 'no']:
+            return response == 'yes'
+        print("Please enter 'yes' or 'no'")
+
+def get_user_input(prompt, default=None):
+    """Get user input with optional default value"""
+    if default:
+        response = input(f"{prompt} (default: {default}): ").strip()
+        return response if response else default
+    else:
+        while True:
+            response = input(f"{prompt}: ").strip()
+            if response:
+                return response
+            print("Please provide a value")
+
+def create_or_get_project(config):
+    """Create a new project or get existing one using configuration"""
     project_config = config['project']
+    project_key = project_config['key']
+    project_name = project_config['name']
+    
+    # Check if project already exists
+    existing_project = get_project(project_key)
+    if existing_project:
+        logging.info(f"Project with key '{project_key}' already exists")
+        
+        # Ask user if they want to use the existing project or create a new one with a different key
+        use_existing = get_user_confirmation(
+            f"Project '{existing_project['name']}' with key '{project_key}' already exists. Do you want to use this existing project?"
+        )
+        
+        if use_existing:
+            logging.info(f"Using existing project: {existing_project['name']} ({project_key})")
+            return existing_project
+        else:
+            # Ask for a new project key and name
+            print("\nPlease provide new project information:")
+            new_project_key = get_user_input("Enter a new project key (must be unique)", f"{project_key}-new")
+            new_project_name = get_user_input("Enter a new project name", f"{project_name} (New)")
+            
+            # Update config with new values
+            project_config['key'] = new_project_key
+            project_config['name'] = new_project_name
+            
+            # Recursive call to try with the new key
+            return create_or_get_project(config)
+    
+    # Project doesn't exist, create a new one
+    logging.info(f"Creating new project: {project_name} ({project_key})...")
+    url = f'{BASE_URL}/projects'
     
     payload = {
-        'name': project_config['name'],
-        'key': project_config['key'],
+        'name': project_name,
+        'key': project_key,
         'tags': project_config.get('tags', []),
         'defaultClientSideAvailability': {
             'usingEnvironmentId': True,
@@ -245,10 +309,10 @@ def main():
         config = load_config()
         logging.info("Configuration loaded successfully")
         
-        # Create project
-        project = create_project(config)
+        # Create project or get existing one with user interaction
+        project = create_or_get_project(config)
         project_key = project['key']
-        logging.info(f'Created project: {project["name"]} with key: {project_key}')
+        logging.info(f'Using project: {project["name"]} with key: {project_key}')
 
         # Get default settings
         defaults = config.get('defaults', {})
@@ -258,7 +322,7 @@ def main():
         environments = list_environments(project_key)
         logging.info(f"Found {len(environments)} existing environments")
         
-        # Delete the test environment if configured to do so
+        # Delete the test environment if configured to do so and it exists
         if remove_test_env:
             for env in environments:
                 if env['key'] == 'test':
@@ -274,15 +338,24 @@ def main():
             raise ValueError("Production environment configuration not found in config.yml")
 
         # Update the existing production environment with our desired settings
-        logging.info("Updating production environment settings...")
-        update_environment(project_key, 'production', prod_config, defaults)
+        # Check if production environment exists first
+        prod_env_exists = any(env['key'] == 'production' for env in environments)
+        if prod_env_exists:
+            logging.info("Updating production environment settings...")
+            update_environment(project_key, 'production', prod_config, defaults)
+        else:
+            logging.info("Production environment doesn't exist, creating it...")
+            create_environment(project_key, prod_config, defaults)
 
-        # Create all other environments from our config
+        # Create all other environments from our config if they don't already exist
         existing_env_keys = set(env['key'] for env in environments)
         for env_config in config['environments']:
             if env_config['key'] != 'production' and env_config['key'] not in existing_env_keys:
                 env = create_environment(project_key, env_config, defaults)
                 logging.info(f'Created environment: {env["name"]} with key: {env["key"]}')
+            elif env_config['key'] != 'production':
+                logging.info(f"Environment {env_config['name']} with key {env_config['key']} already exists, updating it...")
+                update_environment(project_key, env_config['key'], env_config, defaults)
 
         logging.info("LaunchDarkly project setup completed successfully")
 

@@ -157,42 +157,73 @@ The script will:
 4. Apply all configured settings
 5. Generate logs in the `logs/` directory
 
-### Updating Existing Projects
+### Managing Workflow Approvals
 
-To add ServiceNow workflow approvals to Production environments across existing projects:
+The `update_workflow_approvals.py` script provides a robust way to manage workflow approvals across your LaunchDarkly projects:
 
 ```bash
 python update_workflow_approvals.py
 ```
 
-The script provides two modes of operation:
+The script offers two operation modes:
 
-1. **Update All Projects**
-   - Lists all available projects
-   - Automatically processes all Production environments
-   - Updates any environments without ServiceNow workflow approvals
+1. **Add ServiceNow Workflow Approvals**
+   - Configures environments with ServiceNow integration
+   - Sets up all necessary approval settings:
+     * Required approvals with minimum count
+     * ServiceNow integration configuration
+     * Auto-apply and review settings
+     * Approval tags and bypass settings
 
-2. **Select Projects Individually**
-   - Lists all available projects
-   - Prompts for confirmation before processing each project
-   - For projects you approve, prompts before updating each Production environment
-   - Allows you to skip any project or environment
+2. **Remove Workflow Approvals**
+   - Safely removes approval settings
+   - Handles both approvalSettings and resourceApprovalSettings
+   - Ensures clean removal of service configurations
+   - Maintains environment stability during removal
 
-You can exit the script at any time:
-- Type 'quit' at any prompt
-- Press Ctrl+C to gracefully exit
-- The script will save logs of any completed operations before exiting
+Two workflow options are available:
 
-In both modes, the script will:
-1. Query all projects in your LaunchDarkly instance
-2. Find Production environments that don't have ServiceNow workflow approvals
-3. Apply the workflow approval settings (after confirmation if in individual mode)
-4. Generate detailed logs of all changes made
+1. **Global Environment Update**
+   - Update specific environments across multiple projects
+   - Options:
+     * Enter environment keys (e.g., "production, staging")
+     * Use 'all' to process all environments
+     * Process all projects or select specific ones
+   - Efficient for consistent environment structures
 
-The script provides statistics on:
-- Number of environments updated
-- Number of environments skipped (already configured or by user choice)
-- Any errors encountered during the process
+2. **Project-Specific Updates**
+   - Granular control over individual projects
+   - For each project:
+     * View available environments
+     * Select specific environments to update
+     * Confirm changes individually
+   - Ideal for varied environment structures
+
+Common Features:
+- Interactive selection of projects and environments
+- Clear status messages and confirmations
+- Skip detection for already configured environments
+- Comprehensive error handling and logging
+- Multiple exit points:
+  * 'quit' at any prompt
+  * Ctrl+C for graceful exit
+  * 'done' when finished selecting
+
+Operation Flow:
+1. Lists all available projects
+2. Allows environment selection based on chosen workflow
+3. Verifies current approval settings
+4. Applies changes with proper error handling
+5. Provides detailed operation statistics:
+   - Number of environments updated
+   - Number of environments skipped
+   - Any errors encountered
+
+The script maintains consistency by:
+- Checking existing settings before modifications
+- Ensuring matching configurations between approval types
+- Using standardized PATCH operations for reliability
+- Providing detailed logs of all operations
 
 Both scripts use the same environment variables and logging system, making them easy to use together or independently.
 
