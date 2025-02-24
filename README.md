@@ -141,6 +141,8 @@ defaults:
 
 ## Usage
 
+### Creating a New Project
+
 1. Update the `.env` file with your credentials
 2. Modify the `config.yml` file with your desired project configuration
 3. Run the script:
@@ -154,6 +156,45 @@ The script will:
 3. Create additional environments as specified
 4. Apply all configured settings
 5. Generate logs in the `logs/` directory
+
+### Updating Existing Projects
+
+To add ServiceNow workflow approvals to Production environments across existing projects:
+
+```bash
+python update_workflow_approvals.py
+```
+
+The script provides two modes of operation:
+
+1. **Update All Projects**
+   - Lists all available projects
+   - Automatically processes all Production environments
+   - Updates any environments without ServiceNow workflow approvals
+
+2. **Select Projects Individually**
+   - Lists all available projects
+   - Prompts for confirmation before processing each project
+   - For projects you approve, prompts before updating each Production environment
+   - Allows you to skip any project or environment
+
+You can exit the script at any time:
+- Type 'quit' at any prompt
+- Press Ctrl+C to gracefully exit
+- The script will save logs of any completed operations before exiting
+
+In both modes, the script will:
+1. Query all projects in your LaunchDarkly instance
+2. Find Production environments that don't have ServiceNow workflow approvals
+3. Apply the workflow approval settings (after confirmation if in individual mode)
+4. Generate detailed logs of all changes made
+
+The script provides statistics on:
+- Number of environments updated
+- Number of environments skipped (already configured or by user choice)
+- Any errors encountered during the process
+
+Both scripts use the same environment variables and logging system, making them easy to use together or independently.
 
 ## Logging
 
