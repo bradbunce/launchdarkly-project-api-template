@@ -570,6 +570,8 @@ def configure_approval_settings(current_settings=None, env_key=None):
                 ))
                 if 1 <= min_approvals <= 5:
                     approval_settings['flags_approval_settings']['min_num_approvals'] = min_approvals
+                    # FIX: Also update the top-level min_num_approvals value to match flag approval settings
+                    approval_settings['min_num_approvals'] = min_approvals
                     break
                 print("Please enter a number between 1 and 5")
             
@@ -648,19 +650,20 @@ def configure_approval_settings(current_settings=None, env_key=None):
         print("This allows you to use ServiceNow's approval workflows for LaunchDarkly changes.")
         print("Note: ServiceNow approval system does not support segment approvals.")
         
-        # These are the only settings that matter for ServiceNow
         approval_settings['required'] = True  # Must be true for ServiceNow
-    
-        approval_settings['bypass_approvals_for_pending_changes'] = get_user_confirmation(
-            "Allow members with permission to bypass ServiceNow approvals? [Useful for emergency situations]",
-            False
-        )
     
         print("\nSpecify the minimum number of ServiceNow approvals required before a change can be applied.")
         while True:
+            # Get the existing value as default if it exists
+            default_min = 1
+            if current_settings and 'minNumApprovals' in current_settings:
+                default_min = current_settings['minNumApprovals']
+            elif current_settings and 'min_num_approvals' in current_settings:
+                default_min = current_settings['min_num_approvals']
+                
             min_approvals = int(get_user_input(
                 "Minimum number of approvals required (1-5)",
-                str(approval_settings['min_num_approvals'])
+                str(default_min)
             ))
             if 1 <= min_approvals <= 5:
                 approval_settings['min_num_approvals'] = min_approvals
@@ -668,7 +671,8 @@ def configure_approval_settings(current_settings=None, env_key=None):
             print("Please enter a number between 1 and 5")
     
         # ServiceNow template ID is required
-        if not SERVICENOW_TEMPLATE_SYS_ID:
+        template_id = os.environ.get('SERVICENOW_TEMPLATE_SYS_ID')
+        if not template_id:
             print("\nServiceNow integration requires a Template System ID.")
             print("This ID connects LaunchDarkly to the correct ServiceNow template.")
             template_id = get_user_input(
@@ -676,7 +680,6 @@ def configure_approval_settings(current_settings=None, env_key=None):
             )
             os.environ['SERVICENOW_TEMPLATE_SYS_ID'] = template_id
         else:
-            template_id = SERVICENOW_TEMPLATE_SYS_ID
             print(f"\nUsing ServiceNow Template System ID: {template_id}")
             print("To use a different template, update your .env file.")
         
@@ -686,17 +689,11 @@ def configure_approval_settings(current_settings=None, env_key=None):
             'detail_column': 'justification'  # Default value for ServiceNow integration
         }
         
-        # Inform about ServiceNow integration limitations
-        print("\nNote: With ServiceNow integration, the following settings are controlled by ServiceNow:")
-        print("- Self-review capabilities")
-        print("- Approval workflows")
-        print("- Change application process")
-        
         # Explicitly set segment approvals to false for ServiceNow
         approval_settings['segments_approval_settings']['required'] = False
         
         logging.info("User selected ServiceNow approval system")
-    
+
     # Final confirmation of settings
     print("\n" + "="*50)
     print("APPROVAL SETTINGS SUMMARY")

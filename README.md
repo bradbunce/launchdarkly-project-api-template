@@ -344,9 +344,141 @@ The script includes comprehensive error handling for:
 
 Errors are both logged to files and displayed in the console.
 
+## Testing
+
+The project includes a comprehensive test suite that verifies core functionality without making actual API calls.
+
+### Test Structure
+
+1. **Approval Settings Tests** (`tests/test_approval_settings.py`):
+   - LaunchDarkly native approval configuration
+     * Flag approval settings
+     * Segment approval settings
+     * Minimum approval requirements
+     * Self-review permissions
+   - ServiceNow approval configuration
+     * Template integration
+     * Approval requirements
+     * Bypass settings
+   - Approval settings removal
+     * Clean removal of all settings
+     * Environment stability checks
+   - User input handling and validation
+
+2. **Project Management Tests** (`tests/test_project_management.py`):
+   - Project list caching functionality
+     * Initial fetch behavior
+     * Cache reuse verification
+     * Cache refresh operations
+   - Project creation and retrieval
+     * New project creation
+     * Existing project handling
+     * Project key validation
+   - API interaction verification
+     * Request formatting
+     * Response handling
+     * Error scenarios
+
+### Development Testing
+
+For developers working on the project:
+
+1. **Setup Test Environment**:
+   ```bash
+   # Create and activate virtual environment
+   python -m venv venv
+   source venv/bin/activate  # or `venv\Scripts\activate` on Windows
+   
+   # Install development dependencies
+   pip install requests pyyaml python-dotenv pytest
+   ```
+
+2. **Run Tests**:
+   ```bash
+   # Run all tests with detailed output
+   cd tests
+   python run_tests.py
+   
+   # Run specific test file
+   python -m unittest test_approval_settings.py
+   
+   # Run specific test case
+   python -m unittest test_approval_settings.py -k test_configure_launchdarkly_approvals
+   ```
+
+3. **Test Output**:
+   - Detailed test execution logs
+   - Summary of passed/failed tests
+   - Coverage statistics
+   - Exit codes for CI/CD integration
+
+### Test Coverage
+
+The test suite provides comprehensive coverage of:
+
+1. **Core Functionality**:
+   - Project management operations
+   - Approval system configuration
+   - Environment management
+   - Settings validation
+
+2. **Edge Cases**:
+   - Invalid inputs
+   - API error responses
+   - Cache invalidation
+   - Configuration conflicts
+
+3. **User Interactions**:
+   - Input validation
+   - Confirmation prompts
+   - Error messages
+   - Progress indicators
+
+### Mock Implementation
+
+All tests use mocking to avoid real API calls:
+- Simulated API responses
+- User input simulation
+- Environment variable handling
+- File system operations
+
+This ensures:
+- Tests run quickly and reliably
+- No accidental modifications to real resources
+- Consistent test environment
+- Predictable test outcomes
+
+### Adding New Tests
+
+When adding new functionality:
+
+1. Create test cases that verify:
+   - Happy path execution
+   - Error handling
+   - Edge cases
+   - User input validation
+
+2. Follow existing patterns for:
+   - Mock setup
+   - Test organization
+   - Assertion style
+   - Documentation
+
+3. Ensure tests are:
+   - Independent
+   - Deterministic
+   - Well-documented
+   - Performance-conscious
+
 ## Contributing
 
 Feel free to submit issues and enhancement requests!
+
+When contributing code:
+1. Ensure all tests pass
+2. Add tests for new functionality
+3. Follow existing code style
+4. Update documentation as needed
 
 ## License
 
