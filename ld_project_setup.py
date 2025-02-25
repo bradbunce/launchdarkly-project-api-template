@@ -422,235 +422,522 @@ def create_or_get_project(config):
     time.sleep(1)
     return result
 
-def configure_approval_settings(current_settings=None):
-    """Let the user choose and configure the approval system"""
-    print("\n=== Approval System Configuration ===")
+def configure_approval_settings(current_settings=None, env_key=None):
+    """Let the user choose and configure the approval system for a specific environment"""
+    print("\n" + "="*50)
+    print("APPROVAL SYSTEM CONFIGURATION")
+    print("="*50)
     
-    # Detect existing approval system if any
+    # Detect existing approval system
     current_system = None
     if current_settings:
         current_service_kind = current_settings.get('serviceKind', '')
         if current_service_kind == 'launchdarkly':
-            current_system = "LaunchDarkly native approvals"
-            print(f"Current approval system: LaunchDarkly native approvals")
-        elif current_service_kind == 'service-now' or current_service_kind == 'servicenow':
+            current_system = "LaunchDarkly approval system"
+            print(f"Current approval system: {current_system}")
+        elif current_service_kind in ['servicenow', 'servicenow-normal', 'service-now']:
             current_system = "ServiceNow approvals"
-            print(f"Current approval system: ServiceNow approvals")
+            print(f"Current approval system: {current_system}")
         else:
             print("Current approval system: None")
     
-    # Ask user to choose approval system
-    approval_system = get_user_choice(
-        "Which approval system would you like to use?",
-        ["LaunchDarkly native approvals", "ServiceNow approvals", "No approval system"]
-    )
-    
-    if approval_system == "No approval system":
-        logging.info("User selected no approval system")
-        return None
-    
     # Setup the approval settings with default values
+    service_kind = current_settings.get('serviceKind', 'launchdarkly')
+    if service_kind in ['service-now', 'servicenow-normal']:
+        service_kind = 'servicenow'  # Normalize ServiceNow values
+    
+    # All settings default to "no" or most restrictive option
     approval_settings = {
-        'required': True,
+        'required': True,  # Must be true for approvals to work
         'bypass_approvals_for_pending_changes': False,
-        'min_num_approvals': 1,
+        'min_num_approvals': 1,  # Must be at least 1 per API requirements
         'can_review_own_request': False,
-        'can_apply_declined_changes': True,
+        'can_apply_declined_changes': False,
         'auto_apply_approved_changes': False,
         'required_approval_tags': [],
+        'service_kind': service_kind,
+        'service_config': {},
         'flags_approval_settings': {
-            'required': True,
+            'required': False,
             'required_approval_tags': [],
             'can_review_own_request': False,
-            'min_num_approvals': 1,
-            'can_apply_declined_changes': True,
+            'min_num_approvals': 1,  # Must be at least 1 per API requirements
+            'can_apply_declined_changes': False,
             'allow_delete_scheduled_changes': False
         },
         'segments_approval_settings': {
-            'required': True,
+            'required': False,
             'required_approval_tags': [],
             'can_review_own_request': False,
-            'min_num_approvals': 1,
-            'can_apply_declined_changes': True
+            'min_num_approvals': 1,  # Must be at least 1 per API requirements
+            'can_apply_declined_changes': False
         }
     }
     
-    # If there are existing settings, use them as defaults
-    if current_settings:
-        approval_settings['required'] = current_settings.get('required', True)
-        approval_settings['bypass_approvals_for_pending_changes'] = current_settings.get('bypassApprovalsForPendingChanges', False)
-        approval_settings['min_num_approvals'] = current_settings.get('minNumApprovals', 1)
-        approval_settings['can_review_own_request'] = current_settings.get('canReviewOwnRequest', False)
-        approval_settings['can_apply_declined_changes'] = current_settings.get('canApplyDeclinedChanges', True)
-        approval_settings['auto_apply_approved_changes'] = current_settings.get('autoApplyApprovedChanges', False)
-        approval_settings['required_approval_tags'] = current_settings.get('requiredApprovalTags', [])
-        
-        # Extract flag and segment settings if available
-        if 'flagsApprovalSettings' in current_settings:
-            flag_settings = current_settings.get('flagsApprovalSettings', {})
-            approval_settings['flags_approval_settings'] = {
-                'required': flag_settings.get('required', True),
-                'required_approval_tags': flag_settings.get('requiredApprovalTags', []),
-                'can_review_own_request': flag_settings.get('canReviewOwnRequest', False),
-                'min_num_approvals': flag_settings.get('minNumApprovals', 1),
-                'can_apply_declined_changes': flag_settings.get('canApplyDeclinedChanges', True),
-                'allow_delete_scheduled_changes': flag_settings.get('allowDeleteScheduledChanges', False)
-            }
-        
-        if 'segmentsApprovalSettings' in current_settings:
-            segment_settings = current_settings.get('segmentsApprovalSettings', {})
-            approval_settings['segments_approval_settings'] = {
-                'required': segment_settings.get('required', True),
-                'required_approval_tags': segment_settings.get('requiredApprovalTags', []),
-                'can_review_own_request': segment_settings.get('canReviewOwnRequest', False),
-                'min_num_approvals': segment_settings.get('minNumApprovals', 1),
-                'can_apply_declined_changes': segment_settings.get('canApplyDeclinedChanges', True)
-            }
+    # Common approval settings
+    print("\n" + "-"*50)
+    print("COMMON APPROVAL SETTINGS")
+    print("-"*50)
     
-    # Now prompt for each setting
-    print("\n=== Common Approval Settings ===")
     approval_settings['bypass_approvals_for_pending_changes'] = get_user_confirmation(
-        "Allow members with permission to bypass required approvals? [Recommended for emergencies]",
-        approval_settings['bypass_approvals_for_pending_changes']
+        "Allow members with bypass permission to skip approval requirements? [Recommended for emergency situations]",
+        False
     )
     
     approval_settings['auto_apply_approved_changes'] = get_user_confirmation(
-        "Automatically apply changes when approved?",
-        approval_settings['auto_apply_approved_changes']
+        "Automatically apply changes when approved? [Changes will be applied without manual intervention]",
+        False
     )
     
     # Configure system-specific settings
-    if approval_system == "LaunchDarkly native approvals":
-        approval_settings['service_kind'] = 'launchdarkly'
-        approval_settings['service_config'] = {}
+    if service_kind == 'launchdarkly':
+        # We're configuring for a specific environment, so we set that environment as enabled
+        # instead of asking for environment selection again
+        if env_key:
+            approval_settings['enabled_environments'] = [env_key]
         
-        print("\n=== Flag Approval Settings ===")
-        flag_req_type = get_user_choice(
-            "Require approvals for which flags?",
-            ["All flags", "Flags with specific tags", "No flag approvals required"]
+        # ==== FLAG APPROVAL SETTINGS ====
+        print("\n" + "-"*50)
+        print("FLAG APPROVAL SETTINGS")
+        print("-"*50)
+        print("These settings control how flag targeting changes are approved in this environment.")
+        print("Note: Changes to flag variations affect ALL environments in a project and use the strictest approval settings.")
+        
+        # First ask if flag approvals are required
+        approval_settings['flags_approval_settings']['required'] = get_user_confirmation(
+            "Require approvals for flag targeting changes? [When enabled, users must request approval for targeting changes]",
+            False
         )
-        
-        if flag_req_type == "All flags":
-            approval_settings['flags_approval_settings']['required'] = True
-            approval_settings['flags_approval_settings']['required_approval_tags'] = []
-        elif flag_req_type == "Flags with specific tags":
-            approval_settings['flags_approval_settings']['required'] = True
-            tags_input = get_user_input("Enter comma-separated tags for flag approval requirements")
-            approval_settings['flags_approval_settings']['required_approval_tags'] = [tag.strip() for tag in tags_input.split(',')]
-        else:
-            approval_settings['flags_approval_settings']['required'] = False
         
         if approval_settings['flags_approval_settings']['required']:
+            # Ask about scope of flag approvals
+            flag_req_type = get_user_choice(
+                "Which flags require approval?",
+                ["All flags (recommended for critical environments)", 
+                 "Only flags with specific tags (more flexible)"]
+            )
+            
+            if flag_req_type == "All flags (recommended for critical environments)":
+                approval_settings['flags_approval_settings']['required_approval_tags'] = []
+            else:  # Flags with specific tags
+                print("\nFlags with specified tags will require approval for targeting changes.")
+                print("Example tags: 'critical', 'customer-facing', 'financial'")
+                print("Note: While tags are global across environments, this setting applies only to flags in this environment.")
+                tags_input = get_user_input("Enter comma-separated tags for flag approval requirements")
+                approval_settings['flags_approval_settings']['required_approval_tags'] = [tag.strip() for tag in tags_input.split(',')]
+            
+            # Configure scheduled changes
+            print("\nScheduled changes are targeting changes that are set to apply at a future date.")
             approval_settings['flags_approval_settings']['allow_delete_scheduled_changes'] = get_user_confirmation(
-                "Allow deleting scheduled changes without approval?",
-                approval_settings['flags_approval_settings']['allow_delete_scheduled_changes']
+                "Allow deleting scheduled changes without approval? [If enabled, users can cancel scheduled changes without approval]",
+                False
             )
             
+            # Configure self-review
+            print("\nSelf-review allows requesters to approve their own changes.")
             approval_settings['flags_approval_settings']['can_review_own_request'] = get_user_confirmation(
-                "Allow requestors to review their own flag change requests?",
-                approval_settings['flags_approval_settings']['can_review_own_request']
+                "Allow requesters to review their own flag change requests? [If enabled, users can approve their own changes]",
+                False
             )
             
-            approval_settings['flags_approval_settings']['min_num_approvals'] = int(get_user_input(
-                "Minimum number of approvals required for flags",
-                str(approval_settings['flags_approval_settings']['min_num_approvals'])
-            ))
+            # Configure minimum approvals (1-5)
+            print("\nSpecify the minimum number of approvals required before a flag change can be applied.")
+            while True:
+                min_approvals = int(get_user_input(
+                    "Minimum number of approvals required for flags (1-5)",
+                    str(approval_settings['flags_approval_settings']['min_num_approvals'])
+                ))
+                if 1 <= min_approvals <= 5:
+                    approval_settings['flags_approval_settings']['min_num_approvals'] = min_approvals
+                    break
+                print("Please enter a number between 1 and 5")
             
+            # Configure declined changes behavior
+            print("\nConfigure what happens when a reviewer declines a change request.")
             approval_settings['flags_approval_settings']['can_apply_declined_changes'] = not get_user_confirmation(
-                "Disable the option to 'Apply Changes' if any reviewers have declined a flag request?",
-                not approval_settings['flags_approval_settings']['can_apply_declined_changes']
+                "Prevent applying changes if any reviewer has declined? [If enabled, changes cannot be applied if any reviewer declines]",
+                True  # Default to NOT allowing changes to be applied if declined (most secure)
             )
         
-        print("\n=== Segment Approval Settings ===")
-        segment_req_type = get_user_choice(
-            "Require approvals for which segments?",
-            ["All segments", "Segments with specific tags", "No segment approvals required"]
-        )
+        # ==== SEGMENT APPROVAL SETTINGS ====
+        print("\n" + "-"*50)
+        print("SEGMENT APPROVAL SETTINGS")
+        print("-"*50)
+        print("These settings control how segment targeting changes are approved in this environment.")
+        print("Note: Unlike flags, you cannot bypass required approvals for segments, even in emergency situations.")
         
-        if segment_req_type == "All segments":
-            approval_settings['segments_approval_settings']['required'] = True
-            approval_settings['segments_approval_settings']['required_approval_tags'] = []
-        elif segment_req_type == "Segments with specific tags":
-            approval_settings['segments_approval_settings']['required'] = True
-            tags_input = get_user_input("Enter comma-separated tags for segment approval requirements")
-            approval_settings['segments_approval_settings']['required_approval_tags'] = [tag.strip() for tag in tags_input.split(',')]
-        else:
-            approval_settings['segments_approval_settings']['required'] = False
+        # First ask if segment approvals are required
+        approval_settings['segments_approval_settings']['required'] = get_user_confirmation(
+            "Require approvals for segment targeting changes? [When enabled, users must request approval for segment targeting changes]",
+            False
+        )
         
         if approval_settings['segments_approval_settings']['required']:
+            # Ask about scope of segment approvals
+            segment_req_type = get_user_choice(
+                "Which segments require approval?",
+                ["All segments (recommended for critical environments)", 
+                 "Only segments with specific tags (more flexible)"]
+            )
+            
+            if segment_req_type == "All segments (recommended for critical environments)":
+                approval_settings['segments_approval_settings']['required_approval_tags'] = []
+            else:  # Segments with specific tags
+                print("\nSegments with specified tags will require approval for targeting changes.")
+                print("Example tags: 'critical', 'customer-facing', 'financial'")
+                print("Note: While tags are global across environments, this setting applies only to segments in this environment.")
+                tags_input = get_user_input("Enter comma-separated tags for segment approval requirements")
+                approval_settings['segments_approval_settings']['required_approval_tags'] = [tag.strip() for tag in tags_input.split(',')]
+            
+            # Configure self-review
+            print("\nSelf-review allows requesters to approve their own changes.")
             approval_settings['segments_approval_settings']['can_review_own_request'] = get_user_confirmation(
-                "Allow requestors to review their own segment change requests?",
-                approval_settings['segments_approval_settings']['can_review_own_request']
+                "Allow requesters to review their own segment change requests? [If enabled, users can approve their own changes]",
+                False
             )
             
-            approval_settings['segments_approval_settings']['min_num_approvals'] = int(get_user_input(
-                "Minimum number of approvals required for segments",
-                str(approval_settings['segments_approval_settings']['min_num_approvals'])
-            ))
+            # Configure minimum approvals (1-5)
+            print("\nSpecify the minimum number of approvals required before a segment change can be applied.")
+            while True:
+                min_approvals = int(get_user_input(
+                    "Minimum number of approvals required for segments (1-5)",
+                    str(approval_settings['segments_approval_settings']['min_num_approvals'])
+                ))
+                if 1 <= min_approvals <= 5:
+                    approval_settings['segments_approval_settings']['min_num_approvals'] = min_approvals
+                    break
+                print("Please enter a number between 1 and 5")
             
+            # Configure declined changes behavior
+            print("\nConfigure what happens when a reviewer declines a change request.")
             approval_settings['segments_approval_settings']['can_apply_declined_changes'] = not get_user_confirmation(
-                "Disable the option to 'Apply Changes' if any reviewers have declined a segment request?",
-                not approval_settings['segments_approval_settings']['can_apply_declined_changes']
+                "Prevent applying changes if any reviewer has declined? [If enabled, changes cannot be applied if any reviewer declines]",
+                True  # Default to NOT allowing changes to be applied if declined (most secure)
             )
         
-        logging.info("User selected LaunchDarkly native approval system")
-    else:  # ServiceNow approvals
-        approval_settings['service_kind'] = 'service-now'
+        logging.info("User selected LaunchDarkly approval system with detailed configuration")
+    elif service_kind in ['servicenow', 'servicenow-normal', 'service-now']:
+        # Normalize to 'servicenow' which is what the API expects
+        approval_settings['service_kind'] = 'servicenow'
         
-        # Common approval settings
-        approval_settings['min_num_approvals'] = int(get_user_input(
-            "Minimum number of approvals required",
-            str(approval_settings['min_num_approvals'])
-        ))
+        print("\n" + "-"*50)
+        print("SERVICENOW APPROVAL SETTINGS")
+        print("-"*50)
+        print("ServiceNow approvals integrate with your existing ServiceNow instance.")
+        print("This allows you to use ServiceNow's approval workflows for LaunchDarkly changes.")
+        print("Note: ServiceNow approval system does not support segment approvals.")
         
-        approval_settings['can_review_own_request'] = get_user_confirmation(
-            "Should users be allowed to review their own requests?",
-            approval_settings['can_review_own_request']
+        # These are the only settings that matter for ServiceNow
+        approval_settings['required'] = True  # Must be true for ServiceNow
+    
+        approval_settings['bypass_approvals_for_pending_changes'] = get_user_confirmation(
+            "Allow members with permission to bypass ServiceNow approvals? [Useful for emergency situations]",
+            False
         )
-        
-        approval_settings['can_apply_declined_changes'] = get_user_confirmation(
-            "Should users be allowed to apply declined changes?",
-            approval_settings['can_apply_declined_changes']
-        )
-        
-        # Ask if required approval tags should be added
-        tag_req_type = get_user_choice(
-            "Require approvals for which items?",
-            ["All items", "Items with specific tags"]
-        )
-        
-        if tag_req_type == "Items with specific tags":
-            tags_input = get_user_input("Enter comma-separated tags")
-            approval_settings['required_approval_tags'] = [tag.strip() for tag in tags_input.split(',')]
-        
-        # Check if SERVICENOW_TEMPLATE_SYS_ID is available
+    
+        print("\nSpecify the minimum number of ServiceNow approvals required before a change can be applied.")
+        while True:
+            min_approvals = int(get_user_input(
+                "Minimum number of approvals required (1-5)",
+                str(approval_settings['min_num_approvals'])
+            ))
+            if 1 <= min_approvals <= 5:
+                approval_settings['min_num_approvals'] = min_approvals
+                break
+            print("Please enter a number between 1 and 5")
+    
+        # ServiceNow template ID is required
         if not SERVICENOW_TEMPLATE_SYS_ID:
+            print("\nServiceNow integration requires a Template System ID.")
+            print("This ID connects LaunchDarkly to the correct ServiceNow template.")
             template_id = get_user_input(
-                "ServiceNow Template Sys ID not found in environment variables. Please enter it"
+                "ServiceNow Template System ID not found in environment variables. Please enter it now"
             )
             os.environ['SERVICENOW_TEMPLATE_SYS_ID'] = template_id
         else:
             template_id = SERVICENOW_TEMPLATE_SYS_ID
-            
+            print(f"\nUsing ServiceNow Template System ID: {template_id}")
+            print("To use a different template, update your .env file.")
+        
+        # Set up the ServiceNow config
         approval_settings['service_config'] = {
             'template': template_id,
-            'detail_column': 'justification'  # Default value from the update script
+            'detail_column': 'justification'  # Default value for ServiceNow integration
         }
+        
+        # Inform about ServiceNow integration limitations
+        print("\nNote: With ServiceNow integration, the following settings are controlled by ServiceNow:")
+        print("- Self-review capabilities")
+        print("- Approval workflows")
+        print("- Change application process")
+        
+        # Explicitly set segment approvals to false for ServiceNow
+        approval_settings['segments_approval_settings']['required'] = False
+        
         logging.info("User selected ServiceNow approval system")
     
-    # Check if changing approval systems and confirm
-    if current_system and current_system != approval_system:
-        change_confirmed = get_user_confirmation(
-            f"Warning: You are changing the approval system from {current_system} to {approval_system}. Continue?"
-        )
-        if not change_confirmed:
-            print("Operation cancelled. Keeping the existing approval system.")
-            return None
+    # Final confirmation of settings
+    print("\n" + "="*50)
+    print("APPROVAL SETTINGS SUMMARY")
+    print("="*50)
+    print(f"Approval System: {'LaunchDarkly approval system' if service_kind == 'launchdarkly' else 'ServiceNow approvals'}")
+    print(f"Bypass Approvals for Emergencies: {'Yes' if approval_settings['bypass_approvals_for_pending_changes'] else 'No'}")
+    print(f"Auto-apply Approved Changes: {'Yes' if approval_settings['auto_apply_approved_changes'] else 'No'}")
+    
+    if service_kind == 'launchdarkly':
+        if approval_settings['flags_approval_settings']['required']:
+            print("\nFlag Approval Settings:")
+            tag_display = "All flags" if not approval_settings['flags_approval_settings']['required_approval_tags'] else f"Tags: {', '.join(approval_settings['flags_approval_settings']['required_approval_tags'])}"
+            print(f"- Required for: {tag_display}")
+            print(f"- Minimum Approvals: {approval_settings['flags_approval_settings']['min_num_approvals']}")
+            print(f"- Self-review: {'Allowed' if approval_settings['flags_approval_settings']['can_review_own_request'] else 'Not allowed'}")
+            print(f"- Apply if Declined: {'Allowed' if approval_settings['flags_approval_settings']['can_apply_declined_changes'] else 'Not allowed'}")
+            print(f"- Delete Scheduled Changes: {'No approval needed' if approval_settings['flags_approval_settings']['allow_delete_scheduled_changes'] else 'Requires approval'}")
+        else:
+            print("\nFlag Approvals: Not required")
+        
+        if approval_settings['segments_approval_settings']['required']:
+            print("\nSegment Approval Settings:")
+            tag_display = "All segments" if not approval_settings['segments_approval_settings']['required_approval_tags'] else f"Tags: {', '.join(approval_settings['segments_approval_settings']['required_approval_tags'])}"
+            print(f"- Required for: {tag_display}")
+            print(f"- Minimum Approvals: {approval_settings['segments_approval_settings']['min_num_approvals']}")
+            print(f"- Self-review: {'Allowed' if approval_settings['segments_approval_settings']['can_review_own_request'] else 'Not allowed'}")
+            print(f"- Apply if Declined: {'Allowed' if approval_settings['segments_approval_settings']['can_apply_declined_changes'] else 'Not allowed'}")
+        else:
+            print("\nSegment Approvals: Not required")
+    else:
+        # ServiceNow summary
+        print(f"ServiceNow Template ID: {approval_settings['service_config']['template']}")
+        print(f"Minimum Approvals: {approval_settings['min_num_approvals']}")
+        print("Segment Approvals: Not supported with ServiceNow")
+    
+    # Final confirmation
+    confirm = get_user_confirmation("Apply these approval settings?", False)
+    if not confirm:
+        print("\nOperation cancelled. No changes made to approval settings.")
+        return None
     
     return approval_settings
 
-def update_environment(project_key, env_key, env_config, defaults, global_approval_settings):
-    """Update an existing environment with new configuration using JSON Patch"""
+def create_environment(project_key, env_config, defaults, global_approval_settings):
+    """Create a new environment in a project"""
+    # Ensure key is lowercase
+    project_key = project_key.lower()
+    env_key = env_config['key'].lower()
+    
+    # Prepare environment payload
+    payload = {
+        'name': env_config['name'],
+        'key': env_key,
+        'color': env_config.get('color', defaults.get('color', '7B42BC')),  # Default to LaunchDarkly purple
+        'defaultTtl': env_config.get('default_ttl', defaults.get('default_ttl', 0)),
+        'secureMode': env_config.get('secure_mode', defaults.get('secure_mode', False)),
+        'defaultTrackEvents': env_config.get('default_track_events', defaults.get('default_track_events', False)),
+        'tags': env_config.get('tags', defaults.get('tags', [])),
+        'requireComments': env_config.get('require_comments', defaults.get('require_comments', False)),
+        'confirmChanges': env_config.get('confirm_changes', defaults.get('confirm_changes', False))
+    }
+    
+    # Add approval settings if provided and this environment should have them enabled
+    if global_approval_settings:
+        # Check if this environment should have approvals enabled
+        enabled_envs = global_approval_settings.get('enabled_environments')
+        if enabled_envs is None or env_key in enabled_envs:
+            env_approval_settings = global_approval_settings
+            
+            # Convert to the format expected by LaunchDarkly API
+            approval_settings = {
+                'required': env_approval_settings.get('required', True),
+                'bypassApprovalsForPendingChanges': env_approval_settings.get('bypass_approvals_for_pending_changes', False),
+                'minNumApprovals': env_approval_settings.get('min_num_approvals', 1),
+                'canReviewOwnRequest': env_approval_settings.get('can_review_own_request', False),
+                'canApplyDeclinedChanges': env_approval_settings.get('can_apply_declined_changes', True),
+                'autoApplyApprovedChanges': env_approval_settings.get('auto_apply_approved_changes', False),
+                'serviceKind': env_approval_settings.get('service_kind', 'launchdarkly'),
+                'serviceConfig': env_approval_settings.get('service_config', {}),
+                'requiredApprovalTags': env_approval_settings.get('required_approval_tags', [])
+            }
+            
+            # Handle specific approval system types
+            if approval_settings['serviceKind'] == 'launchdarkly':
+                # Handle LaunchDarkly approval settings
+                flags_settings = env_approval_settings.get('flags_approval_settings', {})
+                segments_settings = env_approval_settings.get('segments_approval_settings', {})
+                
+                # Configure flag approvals in main approvalSettings
+                if flags_settings.get('required', False):
+                    approval_settings.update({
+                        'required': True,
+                        'minNumApprovals': flags_settings.get('min_num_approvals', 1),
+                        'canReviewOwnRequest': flags_settings.get('can_review_own_request', False),
+                        'canApplyDeclinedChanges': flags_settings.get('can_apply_declined_changes', True),
+                        'requiredApprovalTags': flags_settings.get('required_approval_tags', [])
+                    })
+                
+                # Configure segment approvals under resourceApprovalSettings
+                if segments_settings.get('required', False):
+                    payload['resourceApprovalSettings'] = {
+                        'segment': {
+                            'required': True,
+                            'bypassApprovalsForPendingChanges': approval_settings.get('bypassApprovalsForPendingChanges', False),
+                            'minNumApprovals': segments_settings.get('min_num_approvals', 1),
+                            'canReviewOwnRequest': segments_settings.get('can_review_own_request', False),
+                            'canApplyDeclinedChanges': segments_settings.get('can_apply_declined_changes', True),
+                            'serviceKind': 'launchdarkly',
+                            'serviceConfig': {},
+                            'requiredApprovalTags': segments_settings.get('required_approval_tags', [])
+                        }
+                    }
+                
+                # Add the main approvalSettings
+                payload['approvalSettings'] = approval_settings
+            
+            elif approval_settings['serviceKind'] == 'servicenow':
+                # For ServiceNow, we need to set both approvalSettings and resourceApprovalSettings
+                # with matching serviceKind and serviceConfig
+                servicenow_settings = {
+                    'required': True,  # Must be true for ServiceNow
+                    'bypassApprovalsForPendingChanges': approval_settings['bypassApprovalsForPendingChanges'],
+                    'minNumApprovals': approval_settings['minNumApprovals'],
+                    'canReviewOwnRequest': False,  # ServiceNow handles this
+                    'canApplyDeclinedChanges': True,  # ServiceNow handles this
+                    'autoApplyApprovedChanges': False,  # ServiceNow handles this
+                    'serviceKind': 'servicenow',
+                    'serviceConfig': approval_settings['serviceConfig'],
+                    'requiredApprovalTags': []  # ServiceNow doesn't use tags
+                }
+                
+                payload['approvalSettings'] = servicenow_settings
+                payload['resourceApprovalSettings'] = {
+                    'segment': {
+                        'required': True,
+                        'bypassApprovalsForPendingChanges': approval_settings['bypassApprovalsForPendingChanges'],
+                        'minNumApprovals': approval_settings['minNumApprovals'],
+                        'canReviewOwnRequest': False,  # ServiceNow handles this
+                        'canApplyDeclinedChanges': True,  # ServiceNow handles this
+                        'autoApplyApprovedChanges': False,  # ServiceNow handles this
+                        'serviceKind': 'servicenow',
+                        'serviceConfig': approval_settings['serviceConfig'],
+                        'requiredApprovalTags': []  # ServiceNow doesn't use tags
+                    }
+                }
+        
+    
+    # Create environment
+    url = f'{BASE_URL}/projects/{project_key}/environments'
+    logging.debug(f"Environment creation payload: {json.dumps(payload, indent=2)}")
+    response = requests.post(url, headers=headers, json=payload)
+    result = handle_response(response, f"environment creation ({env_key})")
+    time.sleep(1)
+    return result
+
+def remove_approval_settings(project_key, env_key, env_name):
+    """Remove workflow approvals from an environment"""
+    # Ensure keys are lowercase
+    project_key = project_key.lower()
+    env_key = env_key.lower()
+    url = f'{BASE_URL}/projects/{project_key}/environments/{env_key}'
+    
+    # Get current environment to see what needs to be updated
+    current_env = get_environment(project_key, env_key)
+    logging.debug(f"Current environment state for {env_key}: {json.dumps(current_env, indent=2)}")
+    
+    # Prepare patch operations to remove approval settings
+    patch_operations = []
+    
+    # Create default settings with approvals disabled
+    default_approval_settings = {
+        'required': False,
+        'bypassApprovalsForPendingChanges': False,
+        'minNumApprovals': 1,
+        'canReviewOwnRequest': False,
+        'canApplyDeclinedChanges': True,
+        'autoApplyApprovedChanges': False,
+        'serviceKind': 'launchdarkly',
+        'serviceConfig': {},
+        'requiredApprovalTags': []
+    }
+    
+    # Default segment settings with approvals disabled
+    default_segment_settings = {
+        'required': False,
+        'bypassApprovalsForPendingChanges': False,
+        'minNumApprovals': 1,
+        'canReviewOwnRequest': False,
+        'canApplyDeclinedChanges': True,
+        'serviceKind': 'launchdarkly',
+        'serviceConfig': {},
+        'requiredApprovalTags': []
+    }
+    
+    # Always replace/update approvalSettings
+    patch_operations.append({
+        'op': 'replace',
+        'path': '/approvalSettings',
+        'value': default_approval_settings
+    })
+    
+    # Always replace/update resourceApprovalSettings if it exists
+    if 'resourceApprovalSettings' in current_env:
+        patch_operations.append({
+            'op': 'replace',
+            'path': '/resourceApprovalSettings',
+            'value': {
+                'segment': default_segment_settings
+            }
+        })
+    else:
+        # Add resourceApprovalSettings if it doesn't exist
+        patch_operations.append({
+            'op': 'add',
+            'path': '/resourceApprovalSettings',
+            'value': {
+                'segment': default_segment_settings
+            }
+        })
+    
+    # Log the complete patch operations
+    logging.info(f"JSON Patch operations to remove approvals: {json.dumps(patch_operations, indent=2)}")
+    
+    if patch_operations:
+        patch_headers = headers.copy()
+        patch_headers['Content-Type'] = 'application/json-patch+json'  # Ensure correct content type
+        
+        # Log the full request we're about to make
+        logging.info(f"Making PATCH request to: {url}")
+        logging.info(f"With headers: {json.dumps(patch_headers, indent=2)}")
+        
+        try:
+            response = requests.patch(url, headers=patch_headers, json=patch_operations)
+            result = handle_response(response, f"removing approval settings ({env_key})")
+            
+            # Check result
+            if result:
+                logging.info(f"PATCH response: {json.dumps(result, indent=2)}")
+            
+            # Verify the update was successful
+            time.sleep(2)  # Give API time to process
+            updated_env = get_environment(project_key, env_key)
+            
+            if not updated_env.get('approvalSettings', {}).get('required', False):
+                logging.info(f"✅ Verified approval settings were successfully removed from {env_key}")
+                print(f"✅ Successfully removed approval settings from {env_name} ({env_key})")
+            else:
+                logging.error(f"❌ Failed to remove approval settings from {env_key}. Environment still has required approvals.")
+                print(f"❌ Warning: Could not verify removal of approval settings from {env_name} ({env_key})")
+            
+            time.sleep(1)
+            return result
+            
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error removing approval settings for {env_key}: {str(e)}")
+            print(f"❌ Error removing approval settings for {env_name} ({env_key}): {str(e)}")
+            return None
+    
+    return current_env
+
+def update_environment(project_key, env_key, env_config, defaults, approval_settings):
+    """Update an existing environment with approval settings"""
     # Ensure keys are lowercase
     project_key = project_key.lower()
     env_key = env_key.lower()
@@ -664,75 +951,127 @@ def update_environment(project_key, env_key, env_config, defaults, global_approv
     patch_operations = []
     
     # Update approval settings if needed
-    if global_approval_settings:
-        # If environment has specific approval settings in config, those take precedence
-        # Otherwise, use the global settings
-        env_approval_settings = env_config.get('approval_settings', global_approval_settings) if env_config else global_approval_settings
-        
+    if approval_settings:
+        # Convert service_kind for ServiceNow
+        if approval_settings.get('service_kind') == 'service-now':
+            approval_settings['service_kind'] = 'servicenow'
+            
         # Convert to the format expected by LaunchDarkly API
-        approval_settings = {
-            'required': env_approval_settings.get('required', True),
-            'bypassApprovalsForPendingChanges': env_approval_settings.get('bypass_approvals_for_pending_changes', False),
-            'minNumApprovals': env_approval_settings.get('min_num_approvals', 1),
-            'canReviewOwnRequest': env_approval_settings.get('can_review_own_request', False),
-            'canApplyDeclinedChanges': env_approval_settings.get('can_apply_declined_changes', True),
-            'autoApplyApprovedChanges': env_approval_settings.get('auto_apply_approved_changes', False),
-            'serviceKind': env_approval_settings.get('service_kind', 'launchdarkly'),
-            'serviceConfig': env_approval_settings.get('service_config', {}),
-            'requiredApprovalTags': env_approval_settings.get('required_approval_tags', [])
+        api_approval_settings = {
+            'required': approval_settings.get('required', True),
+            'bypassApprovalsForPendingChanges': approval_settings.get('bypass_approvals_for_pending_changes', False),
+            'minNumApprovals': max(1, approval_settings.get('min_num_approvals', 1)),  # Ensure min is at least 1
+            'canReviewOwnRequest': approval_settings.get('can_review_own_request', False),
+            'canApplyDeclinedChanges': approval_settings.get('can_apply_declined_changes', False),
+            'autoApplyApprovedChanges': approval_settings.get('auto_apply_approved_changes', False),
+            'serviceKind': approval_settings.get('service_kind', 'launchdarkly'),
+            'serviceConfig': approval_settings.get('service_config', {}),
+            'requiredApprovalTags': approval_settings.get('required_approval_tags', [])
         }
         
-        # Handle LaunchDarkly native approval settings
-        if approval_settings['serviceKind'] == 'launchdarkly':
-            flags_settings = env_approval_settings.get('flags_approval_settings', {})
-            segments_settings = env_approval_settings.get('segments_approval_settings', {})
+        # Handle specific approval system types
+        if api_approval_settings['serviceKind'] == 'launchdarkly':
+            # Handle LaunchDarkly native approval settings
+            flags_settings = approval_settings.get('flags_approval_settings', {})
+            segments_settings = approval_settings.get('segments_approval_settings', {})
             
             # Configure flag approvals in main approvalSettings
             if flags_settings.get('required', False):
-                approval_settings.update({
+                api_approval_settings.update({
                     'required': True,
-                    'minNumApprovals': flags_settings.get('min_num_approvals', 1),
+                    'minNumApprovals': max(1, flags_settings.get('min_num_approvals', 1)),  # Ensure min is at least 1
                     'canReviewOwnRequest': flags_settings.get('can_review_own_request', False),
-                    'canApplyDeclinedChanges': flags_settings.get('can_apply_declined_changes', True),
+                    'canApplyDeclinedChanges': flags_settings.get('can_apply_declined_changes', False),
                     'requiredApprovalTags': flags_settings.get('required_approval_tags', [])
                 })
+                
+                # The flagsApprovalSettings attribute might not be supported in all API versions
+                # Only add it if the current environment already has it
+                if 'flagsApprovalSettings' in current_env.get('approvalSettings', {}):
+                    api_approval_settings['flagsApprovalSettings'] = {
+                        'required': True,
+                        'requiredApprovalTags': flags_settings.get('required_approval_tags', []),
+                        'minNumApprovals': max(1, flags_settings.get('min_num_approvals', 1)),  # Ensure min is at least 1
+                        'canReviewOwnRequest': flags_settings.get('can_review_own_request', False),
+                        'canApplyDeclinedChanges': flags_settings.get('can_apply_declined_changes', False),
+                        'allowDeleteScheduledChanges': flags_settings.get('allow_delete_scheduled_changes', False)
+                    }
             
             # Configure segment approvals under resourceApprovalSettings.segment
+            segment_approval_settings = None
             if segments_settings.get('required', False):
+                segment_approval_settings = {
+                    'required': True,
+                    'bypassApprovalsForPendingChanges': api_approval_settings.get('bypassApprovalsForPendingChanges', False),
+                    'minNumApprovals': max(1, segments_settings.get('min_num_approvals', 1)),  # Ensure min is at least 1
+                    'canReviewOwnRequest': segments_settings.get('can_review_own_request', False),
+                    'canApplyDeclinedChanges': segments_settings.get('can_apply_declined_changes', False),
+                    'serviceKind': 'launchdarkly',
+                    'serviceConfig': {},
+                    'requiredApprovalTags': segments_settings.get('required_approval_tags', [])
+                }
+            else:
+                segment_approval_settings = {
+                    'required': False,
+                    'minNumApprovals': 1,  # Always set minNumApprovals to at least 1
+                    'serviceKind': 'launchdarkly',
+                    'serviceConfig': {}
+                }
+            
+            # Add segment settings to patch operations
+            patch_operations.append({
+                'op': 'replace',
+                'path': '/resourceApprovalSettings',
+                'value': {
+                    'segment': segment_approval_settings
+                }
+            })
+        
+            # Add the main approvalSettings patch operation
+            patch_operations.append({
+                'op': 'replace',
+                'path': '/approvalSettings',
+                'value': api_approval_settings
+            })
+        
+        elif api_approval_settings['serviceKind'] == 'servicenow':
+            # For ServiceNow, only set the main approvalSettings without segment settings
+            servicenow_settings = {
+                'required': True,  # Must be true for ServiceNow
+                'bypassApprovalsForPendingChanges': api_approval_settings['bypassApprovalsForPendingChanges'],
+                'minNumApprovals': max(1, api_approval_settings['minNumApprovals']),  # Ensure min is at least 1
+                'canReviewOwnRequest': False,  # ServiceNow handles this
+                'canApplyDeclinedChanges': True,  # ServiceNow handles this
+                'autoApplyApprovedChanges': False,  # ServiceNow handles this
+                'serviceKind': 'servicenow',  # Use 'servicenow' instead of 'service-now'
+                'serviceConfig': api_approval_settings['serviceConfig'],
+                'requiredApprovalTags': []  # ServiceNow doesn't use tags
+            }
+            
+            # Only update the main approvalSettings for ServiceNow
+            patch_operations.append({
+                'op': 'replace',
+                'path': '/approvalSettings',
+                'value': servicenow_settings
+            })
+            
+            # For ServiceNow, we need to make sure segment settings are disabled
+            # with a LaunchDarkly serviceKind (since ServiceNow isn't supported for segments)
+            # Check if the environment already has resourceApprovalSettings.segment
+            if 'resourceApprovalSettings' in current_env and 'segment' in current_env['resourceApprovalSettings']:
                 patch_operations.append({
                     'op': 'replace',
-                    'path': '/resourceApprovalSettings',
+                    'path': '/resourceApprovalSettings/segment',
                     'value': {
-                        'segment': {
-                            'required': True,
-                            'bypassApprovalsForPendingChanges': approval_settings.get('bypassApprovalsForPendingChanges', False),
-                            'minNumApprovals': segments_settings.get('min_num_approvals', 1),
-                            'canReviewOwnRequest': segments_settings.get('can_review_own_request', False),
-                            'canApplyDeclinedChanges': segments_settings.get('can_apply_declined_changes', True),
-                            'serviceKind': 'launchdarkly',
-                            'serviceConfig': {},
-                            'requiredApprovalTags': segments_settings.get('required_approval_tags', [])
-                        }
+                        'required': False,
+                        'minNumApprovals': 1,
+                        'serviceKind': 'launchdarkly',  # Must be launchdarkly for segments
+                        'serviceConfig': {}
                     }
                 })
         
         # Log the approval settings we're about to apply
-        logging.info(f"Approval settings to apply: {json.dumps(approval_settings, indent=2)}")
-        
-        # Create a proper JSON Patch operation
-        patch_operations.append({
-            'op': 'replace',
-            'path': '/approvalSettings',
-            'value': approval_settings
-        })
-        
-        # If using ServiceNow, also update resourceApprovalSettings
-        if approval_settings['serviceKind'] == 'service-now':
-            patch_operations.append({
-                'op': 'replace',
-                'path': '/resourceApprovalSettings',
-                'value': approval_settings
-            })
+        logging.info(f"Approval settings to apply: {json.dumps(api_approval_settings, indent=2)}")
     
     # Log the complete patch operations
     logging.info(f"JSON Patch operations: {json.dumps(patch_operations, indent=2)}")
@@ -745,106 +1084,53 @@ def update_environment(project_key, env_key, env_config, defaults, global_approv
         logging.info(f"Making PATCH request to: {url}")
         logging.info(f"With headers: {json.dumps(patch_headers, indent=2)}")
         
-        response = requests.patch(url, headers=patch_headers, json=patch_operations)
-        result = handle_response(response, f"environment update ({env_key})")
-        
-        # Check result
-        if result:
-            logging.info(f"PATCH response: {json.dumps(result, indent=2)}")
-        
-        # Verify the update was successful
-        time.sleep(2)  # Give API time to process
-        updated_env = get_environment(project_key, env_key)
-        logging.info(f"Environment after update: {json.dumps(updated_env.get('approvalSettings', {}), indent=2)}")
-        
-        if 'approvalSettings' in updated_env and updated_env['approvalSettings'].get('serviceKind') == approval_settings['serviceKind']:
-            logging.info(f"✅ Verified approval settings were successfully applied to {env_key}")
-        else:
-            logging.error(f"❌ Failed to update approval settings for {env_key}. Updated environment does not contain expected settings.")
-        
-        time.sleep(1)
-        return result
+        try:
+            response = requests.patch(url, headers=patch_headers, json=patch_operations)
+            result = handle_response(response, f"environment update ({env_key})")
+            
+            # Check result
+            if result:
+                logging.info(f"PATCH response: {json.dumps(result, indent=2)}")
+            
+            # Verify the update was successful
+            time.sleep(2)  # Give API time to process
+            updated_env = get_environment(project_key, env_key)
+            
+            # Check if approval settings were updated correctly
+            if approval_settings:
+                expected_service_kind = 'servicenow' if approval_settings.get('service_kind') in ['servicenow', 'service-now'] else approval_settings.get('service_kind')
+                actual_service_kind = updated_env.get('approvalSettings', {}).get('serviceKind')
+                
+                if 'approvalSettings' in updated_env and actual_service_kind == expected_service_kind:
+                    logging.info(f"✅ Verified approval settings were successfully applied to {env_key}")
+                    print(f"✅ Successfully updated approval settings for {env_key}")
+                else:
+                    logging.error(f"❌ Failed to update approval settings for {env_key}. Updated environment does not contain expected settings.")
+                    print(f"❌ Warning: Could not verify approval settings for {env_key}")
+            
+            time.sleep(1)
+            return result
+            
+        except Exception as e:
+            logging.error(f"Error updating environment {env_key}: {str(e)}")
+            print(f"❌ Error updating environment {env_key}: {str(e)}")
+            
+            # Enhanced error handling to extract API error message
+            if hasattr(e, 'response') and e.response:
+                try:
+                    error_json = json.loads(e.response.text)
+                    if 'message' in error_json:
+                        logging.error(f"API Error message: {error_json['message']}")
+                        print(f"API Error: {error_json['message']}")
+                except:
+                    logging.error(f"Response text: {e.response.text}")
+            
+            raise
     
     return current_env
 
-def create_environment(project_key, env_config, defaults, global_approval_settings):
-    """Create a new environment using configuration"""
-    # Ensure keys are lowercase
-    project_key = project_key.lower()
-    # Also ensure the environment key in the config is lowercase
-    if env_config and 'key' in env_config:
-        env_config['key'] = env_config['key'].lower()
-    url = f'{BASE_URL}/projects/{project_key}/environments'
-    
-    payload = {
-        'name': env_config['name'],
-        'key': env_config['key'],
-        'color': env_config['color'],
-        'tags': env_config.get('tags', defaults.get('environment', {}).get('tags', [])),
-        'production': env_config.get('production', False),
-        'confirmChanges': env_config.get('confirm_changes', 
-                                       defaults.get('environment', {}).get('confirm_changes', False)),
-        'requireComments': env_config.get('require_comments', 
-                                        defaults.get('environment', {}).get('require_comments', False))
-    }
-    
-    response = requests.post(url, headers=headers, json=payload)
-    result = handle_response(response, f"environment creation ({env_config['name']})")
-    time.sleep(1)
-    
-    # If approval settings are configured, update the environment with them
-    if global_approval_settings:
-        update_environment(project_key, env_config['key'], env_config, defaults, global_approval_settings)
-    
-    return result
-
-def remove_approval_settings(project_key, env_key, env_name):
-    """Remove approval settings from an environment"""
-    # Ensure keys are lowercase
-    project_key = project_key.lower()
-    env_key = env_key.lower()
-    url = f'{BASE_URL}/projects/{project_key}/environments/{env_key}'
-    
-    # Get current environment
-    current_env = get_environment(project_key, env_key)
-    
-    # Create a standard JSON patch with operations in the RFC 6902 format
-    patch_operations = []
-    
-    # For each settings object, we'll first check if it exists and has required=true
-    # If so, we'll add a replace operation to set required=false
-    
-    if current_env.get('approvalSettings', {}).get('required', False):
-        patch_operations.append({
-            "op": "replace",
-            "path": "/approvalSettings/required",
-            "value": False
-        })
-    
-    if current_env.get('resourceApprovalSettings', {}).get('required', False):
-        patch_operations.append({
-            "op": "replace",
-            "path": "/resourceApprovalSettings/required",
-            "value": False
-        })
-    
-    if not patch_operations:
-        logging.info(f"No approval settings to remove for {env_name}")
-        return None
-    
-    logging.info(f"Applying JSON Patch with {len(patch_operations)} operations for {env_name}")
-    logging.debug(f"JSON Patch operations: {json.dumps(patch_operations)}")
-    
-    # Apply the JSON patch
-    patch_headers = headers.copy()
-    patch_headers['Content-Type'] = 'application/json'
-    
-    response = requests.patch(url, headers=patch_headers, json=patch_operations)
-    result = handle_response(response, f"removing approval settings for {env_name}")
-    time.sleep(1)
-    return result
-
 def main():
+    """Main entry point for the script"""
     # Set up graceful exit on Ctrl+C
     def signal_handler(sig, frame):
         print("\n\nReceived Ctrl+C. Exiting gracefully...")
@@ -855,17 +1141,17 @@ def main():
     try:
         # Setup logging
         log_file = setup_logging()
-        logging.info("Starting LaunchDarkly approval management")
+        logging.info("Starting LaunchDarkly project setup")
         logging.info(f"Log file: {log_file}")
         
         # Ask if user wants to create a new project or manage existing ones
         operation_mode = get_user_choice(
             "What would you like to do?",
-            ["Create a new project and configure environments", 
+            ["Create a new project and configure environments with workflow approvals", 
              "Manage approval systems for existing projects"]
         )
         
-        if operation_mode == "Create a new project and configure environments":
+        if operation_mode == "Create a new project and configure environments with workflow approvals":
             # ===== Project Creation Mode =====
             # Load configuration
             try:
@@ -876,28 +1162,6 @@ def main():
                 logging.error(f"Error loading configuration: {str(e)}")
                 print(f"Error loading configuration: {str(e)}")
                 return
-            
-            # Check if production environment exists to get existing approval settings
-            existing_project = get_project(config['project']['key'])
-            existing_approval_settings = None
-            
-            if existing_project:
-                try:
-                    # Get detailed environment settings for production to check for approval system
-                    prod_envs = [env for env in list_environments(existing_project['key']) if env['key'] == 'production']
-                    if prod_envs:
-                        prod_env_details = get_environment(existing_project['key'], 'production')
-                        existing_approval_settings = prod_env_details.get('approvalSettings')
-                        
-                        if existing_approval_settings:
-                            logging.info(f"Found existing approval settings with service kind: {existing_approval_settings.get('serviceKind', 'unknown')}")
-                except Exception as e:
-                    logging.warning(f"Error retrieving existing approval settings: {str(e)}")
-            
-            # Get global approval settings from user
-            print("\nBefore setting up your LaunchDarkly project, let's configure your approval system.")
-            print("This will apply to all environments unless overridden in specific environments.")
-            global_approval_settings = configure_approval_settings(existing_approval_settings)
             
             # Create project or get existing one with user interaction
             project = create_or_get_project(config)
@@ -932,20 +1196,69 @@ def main():
             prod_env_exists = any(env['key'] == 'production' for env in environments)
             if prod_env_exists:
                 logging.info("Updating production environment settings...")
-                update_environment(project_key, 'production', prod_config, defaults, global_approval_settings)
+                update_environment(project_key, 'production', prod_config, defaults, None)
             else:
                 logging.info("Production environment doesn't exist, creating it...")
-                create_environment(project_key, prod_config, defaults, global_approval_settings)
+                create_environment(project_key, prod_config, defaults, None)
 
             # Create all other environments from our config if they don't already exist
             existing_env_keys = set(env['key'] for env in environments)
             for env_config in config['environments']:
                 if env_config['key'] != 'production' and env_config['key'] not in existing_env_keys:
-                    env = create_environment(project_key, env_config, defaults, global_approval_settings)
+                    env = create_environment(project_key, env_config, defaults, None)
                     logging.info(f'Created environment: {env["name"]} with key: {env["key"]}')
                 elif env_config['key'] != 'production':
                     logging.info(f"Environment {env_config['name']} with key {env_config['key']} already exists, updating it...")
-                    update_environment(project_key, env_config['key'], env_config, defaults, global_approval_settings)
+                    update_environment(project_key, env_config['key'], env_config, defaults, None)
+
+            # Ask if user wants to configure approval workflows now
+            print("\nWould you like to configure workflow approvals for any environments?")
+            if get_user_confirmation("Configure workflow approvals", True):
+                environments = list_environments(project_key)  # Get fresh list of all environments
+                
+                # Loop through each environment and ask if approvals should be configured
+                for env in environments:
+                    env_key = env['key']
+                    env_name = env['name']
+                    print(f"\nConfigure workflow approvals for {env_name} ({env_key})?")
+                    if get_user_confirmation("Enable workflow approvals for this environment", False):
+                        # Ask which approval system to use
+                        approval_system = get_user_choice(
+                            f"\nWhich approval system would you like to use for {env_name}?",
+                            ["LaunchDarkly approval system", "ServiceNow approvals"]
+                        )
+                        
+                        # Get current environment settings
+                        env_details = get_environment(project_key, env_key)
+                        existing_settings = env_details.get('approvalSettings')
+                        
+                        # Set the service kind based on user's choice
+                        if existing_settings:
+                            if approval_system == "LaunchDarkly approval system":
+                                existing_settings['serviceKind'] = 'launchdarkly'
+                            else:  # ServiceNow approvals
+                                existing_settings['serviceKind'] = 'servicenow'
+                        else:
+                            # Create new settings object if none exists
+                            existing_settings = {
+                                'serviceKind': 'launchdarkly' if approval_system == "LaunchDarkly approval system" else 'servicenow'
+                            }
+                            
+                        # Pass the environment key to configure_approval_settings
+                        # This prevents it from asking for environment selection again
+                        approval_settings = configure_approval_settings(existing_settings, env_key)
+                        
+                        if approval_settings:
+                            try:
+                                update_environment(project_key, env_key, None, None, approval_settings)
+                                logging.info(f"Successfully configured approval settings for {env_name}")
+                            except Exception as e:
+                                logging.error(f"Error configuring approval settings for {env_name}: {str(e)}")
+                                print(f"Error: {str(e)}")
+                        else:
+                            logging.info(f"Skipping approval settings for {env_name}")
+                    else:
+                        logging.info(f"Skipping approval settings for {env_name}")
 
             logging.info("LaunchDarkly project setup completed successfully")
             
@@ -963,28 +1276,20 @@ def main():
             display_projects(projects)
             
             print("\nWhat action would you like to take?")
-            print("1. Configure approval systems")
-            print("2. Remove approval systems")
-            
-            action = get_user_choice("Enter your choice", ["1. Configure approval systems", "2. Remove approval systems"])
-            remove_settings = "2" in action
+            action = get_user_choice("Enter your choice", ["Configure approval systems", "Remove approval systems"])
+            remove_settings = action == "Remove approval systems"
             
             print("\nHow would you like to proceed?")
-            print("1. Update specific environments across all/selected projects")
-            print("2. Select environments individually for each project")
+            workflow = get_user_choice("Enter your choice", ["Update specific environments across all/selected projects", 
+                                                           "Select environments individually for each project"])
             
-            workflow = get_user_choice("Enter your choice", ["1. Update specific environments", "2. Select environments individually"])
-            
-            if "1" in workflow:
+            if workflow == "Update specific environments across all/selected projects":
                 # Global environment update
                 env_keys = get_environment_keys()
                 
                 print("\nHow would you like to proceed with projects?")
-                print("1. Process all projects")
-                print("2. Select specific projects")
-                
-                project_mode = get_user_choice("Enter your choice", ["1. Process all projects", "2. Select specific projects"])
-                target_projects = select_projects(projects) if "2" in project_mode else projects
+                project_mode = get_user_choice("Enter your choice", ["Process all projects", "Select specific projects"])
+                target_projects = select_projects(projects) if project_mode == "Select specific projects" else projects
             else:
                 # Project-specific environment selection
                 target_projects = select_projects(projects)
@@ -1001,7 +1306,7 @@ def main():
                 logging.info(f"\nProcessing project: {project_name} ({project_key})")
                 
                 try:
-                    if "1" in workflow:
+                    if workflow == "Update specific environments across all/selected projects":
                         # Global environment update
                         environments = get_project_environments(project_key, env_keys)
                         if not environments:
@@ -1035,7 +1340,7 @@ def main():
                             # Remove approval settings
                             action_desc = "remove workflow approvals from"
                             # For project-specific workflow, confirm each update
-                            if "2" in workflow:
+                            if workflow == "Select environments individually for each project":
                                 print(f"\nEnvironment {env_name} in {project_name}: {action_desc}?")
                                 if not get_user_confirmation("Would you like to proceed"):
                                     logging.info(f"Skipping environment {env_name} by user choice")
@@ -1050,7 +1355,7 @@ def main():
                             # Update approval settings
                             action_desc = "add/update workflow approvals for"
                             # For project-specific workflow, confirm each update
-                            if "2" in workflow:
+                            if workflow == "Select environments individually for each project":
                                 print(f"\nEnvironment {env_name} in {project_name}: {action_desc}?")
                                 if not get_user_confirmation("Would you like to proceed"):
                                     logging.info(f"Skipping environment {env_name} by user choice")
