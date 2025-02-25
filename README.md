@@ -4,12 +4,19 @@ This project provides an automated setup script for creating and configuring Lau
 
 ## Overview
 
-The script (`ld_project_setup.py`) automates the following tasks:
-- Creates a new LaunchDarkly project
-- Configures multiple environments (Production, Staging, Testing, Development)
-- Sets up workflow approvals for the Production environment with ServiceNow integration
-- Configures environment-specific settings like requiring comments and confirming changes
-- Handles environment tags and other customizations
+The script (`ld_project_setup.py`) provides two main functions:
+
+1. **Create and Configure New Projects**
+   - Creates a new LaunchDarkly project
+   - Configures multiple environments (Production, Staging, Testing, Development)
+   - Sets up workflow approvals with either LaunchDarkly's native system or ServiceNow integration
+   - Configures environment-specific settings like requiring comments and confirming changes
+   - Handles environment tags and other customizations
+
+2. **Manage Approval Systems for Existing Projects**
+   - Configure or remove approval systems across multiple projects
+   - Flexible environment selection (all, specific, or individual)
+   - Support for both LaunchDarkly native approvals and ServiceNow integration
 
 ## Prerequisites
 
@@ -120,39 +127,43 @@ defaults:
 - `require_comments`: Require comments for flag changes
 - `tags`: List of tags to apply to the environment
 
-#### Approval Settings (Production Environment)
+#### Approval Settings
 
-For ServiceNow Integration:
-- `required`: Enable approval workflow
-- `bypass_approvals_for_pending_changes`: Allow bypassing approvals for scheduled changes
-- `min_num_approvals`: Minimum number of approvals required
-- `can_review_own_request`: Allow users to review their own requests
-- `can_apply_declined_changes`: Allow applying previously declined changes
+The script supports comprehensive configuration of approval settings for both LaunchDarkly's native system and ServiceNow integration.
+
+**Common Settings (Both Systems)**:
+- `bypass_approvals_for_pending_changes`: Allow bypassing approvals for scheduled changes [Recommended for emergencies]
+- `min_num_approvals`: Number of required approvals (1-5)
 - `auto_apply_approved_changes`: Automatically apply changes after approval
-- `service_kind`: Set to "servicenow"
-- `service_config`: ServiceNow-specific configuration
-  - `detail_column`: Column for change justification
-  - `template`: ServiceNow template ID (uses environment variable)
-- `required_approval_tags`: List of tags requiring approval
 
-For LaunchDarkly Native Approvals:
-- Flag Approvals (configured in approvalSettings):
-  - `required`: Enable flag approval workflow
-  - `min_num_approvals`: Minimum approvals needed for flags
-  - `can_review_own_request`: Allow self-review of flag changes
-  - `can_apply_declined_changes`: Allow applying declined flag changes
-  - `required_approval_tags`: Tags requiring flag approval
-  - `service_kind`: Set to "launchdarkly"
-  - `service_config`: Empty object for native approvals
+**LaunchDarkly Native Approvals**:
 
-- Segment Approvals (configured in resourceApprovalSettings.segment):
-  - `required`: Enable segment approval workflow
-  - `min_num_approvals`: Minimum approvals needed for segments
-  - `can_review_own_request`: Allow self-review of segment changes
-  - `can_apply_declined_changes`: Allow applying declined segment changes
-  - `required_approval_tags`: Tags requiring segment approval
-  - `service_kind`: Set to "launchdarkly"
-  - `service_config`: Empty object for native approvals
+*Flag Approval Settings*:
+- Controls how flag targeting changes are approved in each environment
+- Changes to flag variations affect all environments and use the strictest approval settings
+- Options:
+  - Require approvals for all flags or only flags with specific tags
+  - Allow/prevent deleting scheduled changes without approval
+  - Allow/prevent self-review of flag changes
+  - Set minimum approvals required (1-5)
+  - Control behavior when changes are declined
+
+*Segment Approval Settings*:
+- Controls how segment targeting changes are approved
+- Note: Unlike flags, you cannot bypass required approvals for segments
+- Options:
+  - Require approvals for all segments or only segments with specific tags
+  - Allow/prevent self-review of segment changes
+  - Set minimum approvals required (1-5)
+  - Control behavior when changes are declined
+
+**ServiceNow Integration**:
+- Requires ServiceNow template ID (configured via environment variable)
+- Simplified settings focused on ServiceNow's approval flow
+- Options:
+  - Allow bypassing approvals with proper permissions
+  - Set minimum required approvals
+  - Configure template and justification settings
 
 #### Default Settings
 - `confirm_changes`: Default setting for requiring change confirmation
@@ -171,21 +182,34 @@ Both scripts (`ld_project_setup.py` and `update_workflow_approvals.py`) handle c
 - Display names can still use any case format
 - You can use any case in your configuration files - the scripts will handle the conversion
 
-### Creating a New Project
+### Using the Script
 
-1. Update the `.env` file with your credentials
-2. Modify the `config.yml` file with your desired project configuration
-3. Run the script:
+Run the script:
 ```bash
 python ld_project_setup.py
 ```
 
-The script will:
-1. Create a new project in LaunchDarkly
-2. Configure the Production environment with workflow approvals
-3. Create additional environments as specified
-4. Apply all configured settings
-5. Generate logs in the `logs/` directory
+The script will present two options:
+1. **Create a new project and configure environments with workflow approvals**
+   - Prompts for configuration file path
+   - Creates project and environments as specified
+   - Offers to configure workflow approvals for each environment
+   - Provides clear prompts for all approval settings
+   - Generates detailed logs of the process
+
+2. **Manage approval systems for existing projects**
+   - Lists all available projects
+   - Offers to configure or remove approval systems
+   - Provides flexible environment selection
+   - Supports batch operations across multiple projects
+   - Shows clear progress and results
+
+For both modes:
+- Interactive prompts guide you through the process
+- Clear explanations of each setting's impact
+- Validation of inputs (e.g., 1-5 approvals)
+- Comprehensive error handling
+- Detailed logging of all operations
 
 ### Managing Workflow Approvals
 
