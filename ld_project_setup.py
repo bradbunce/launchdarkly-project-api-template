@@ -80,8 +80,26 @@ def handle_response(response, operation):
         logging.error(f"Response body: {response.text}")
         raise Exception(f"API error during {operation}: {str(e)}")
 
-def list_projects():
-    """List all projects with pagination"""
+# Global cache for projects
+_cached_projects = None
+
+def list_projects(force_refresh=False):
+    """List all projects with pagination, using cache if available"""
+    global _cached_projects
+    
+    # Check if we have cached projects and not forcing refresh
+    if _cached_projects is not None and not force_refresh:
+        print("\nUsing cached project list...")
+        if get_user_confirmation("Would you like to refresh the project list instead?", False):
+            force_refresh = True
+        else:
+            return _cached_projects
+    
+    if force_refresh:
+        print("\nRefreshing project list...")
+    else:
+        print("\nFetching projects...")
+    
     all_projects = []
     offset = 0
     limit = 20  # LaunchDarkly's default limit
@@ -99,11 +117,14 @@ def list_projects():
         offset += limit
         
         # Show progress
-        print(f"Fetching projects... ({len(all_projects)} found)", end='\r')
+        print(f"Found {len(all_projects)} projects...", end='\r')
         
         time.sleep(1)  # Rate limiting
     
     print("\n")  # Clear the progress line
+    
+    # Cache the results
+    _cached_projects = all_projects
     return all_projects
 
 def get_project(project_key):

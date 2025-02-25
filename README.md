@@ -71,44 +71,58 @@ SERVICENOW_TEMPLATE_SYS_ID=your-servicenow-template-id
 The `config.yml` file defines your project structure and settings:
 
 ```yaml
+# Project configuration
 project:
-  name: "Your Project Name"
-  key: "your-project-key"
+  name: "Example Project Name"
+  key: "example-project-key"
   tags: ["created-via-api"]
 
+# Default environment handling
+defaults:
+  environment:
+    confirm_changes: false
+    require_comments: false
+    tags: ["created-via-api"]
+  
+  # Control whether to remove the default 'test' environment
+  remove_default_test_env: false  # Set to true if you want to remove the default test environment
+
+# Environment configuration
+# Note: LaunchDarkly creates two default environments when a project is created:
+# - 'production': This environment is required and cannot be deleted. You can update its settings below.
+# - 'test': This environment will be kept or deleted based on 'remove_default_test_env' setting above.
+
 environments:
+  # Production environment is required. These settings will update the default production environment.
   - name: "Production"
-    key: "production"
+    key: "production"  # Must be 'production' to match default environment
     color: "417505"    # Green
     production: true
     confirm_changes: true
     require_comments: true
-    approval_settings:
-      required: true
-      bypass_approvals_for_pending_changes: false
-      min_num_approvals: 1
-      can_review_own_request: false
-      can_apply_declined_changes: true
-      auto_apply_approved_changes: true
-      service_kind: "servicenow"
-      service_config:
-        detail_column: "justification"
-        template: "${SERVICENOW_TEMPLATE_SYS_ID}"
-      required_approval_tags: []
 
   - name: "Staging"
     key: "staging"
     color: "F5A623"  # Orange
     production: false
 
-  # Additional environments...
+  - name: "Testing"
+    key: "testing"
+    color: "0275d8"  # Blue
+    production: false
 
-defaults:
-  environment:
-    confirm_changes: false
-    require_comments: false
-    tags: ["created-via-api"]
-  remove_default_test_env: true
+  - name: "Development"
+    key: "development"
+    color: "666666"  # Gray
+    production: false
+
+# Optional: Feature flags configuration
+# Uncomment and modify this section to create feature flags
+# feature_flags:
+#   - key: "enable-new-feature"
+#     name: "Enable New Feature"
+#     description: "Controls the release of new feature"
+#     type: "boolean"
 ```
 
 ### Configuration Options
@@ -190,6 +204,7 @@ python ld_project_setup.py
 ```
 
 The script will present two options:
+
 1. **Create a new project and configure environments with workflow approvals**
    - Prompts for configuration file path
    - Creates project and environments as specified
@@ -198,42 +213,73 @@ The script will present two options:
    - Generates detailed logs of the process
 
 2. **Manage approval systems for existing projects**
-   - Lists all available projects
+   - Lists all available projects (with efficient caching)
    - Offers to configure or remove approval systems
    - Provides flexible environment selection
    - Supports batch operations across multiple projects
    - Shows clear progress and results
 
-For both modes:
-- Interactive prompts guide you through the process
-- Clear explanations of each setting's impact
-- Validation of inputs (e.g., 1-5 approvals)
+**Performance Optimization**:
+- Project list is cached after first fetch
+- Subsequent operations reuse cached data
+- Option to refresh cache when needed
+- Significantly faster for multiple operations
+
+**Interactive Configuration**:
+- Step-by-step guidance through each setting
+- Clear explanations of each option's impact
+- Validation of all inputs (e.g., 1-5 approvals)
+- Helpful descriptions of recommended settings
+- Option to quit at any point
+
+**Flag Approval Configuration**:
+- Configure targeting change approvals
+- Set approval requirements (all flags or tagged)
+- Control scheduled change deletions
+- Set minimum approval counts
+- Configure self-review permissions
+- Manage declined change behavior
+
+**Segment Approval Configuration**:
+- Independent from flag approvals
+- Cannot be bypassed (unlike flags)
+- Configure targeting change approvals
+- Set approval requirements
+- Manage review permissions
+- Control declined changes
+
+**Common Features**:
 - Comprehensive error handling
 - Detailed logging of all operations
+- Clear progress indicators
+- Confirmation prompts for important actions
+- Multiple exit points (quit/Ctrl+C)
 
 ### Managing Workflow Approvals
 
-The `update_workflow_approvals.py` script provides a robust way to manage workflow approvals across your LaunchDarkly projects:
+The script provides comprehensive workflow approval management:
 
-```bash
-python update_workflow_approvals.py
-```
+**LaunchDarkly Native Approvals**:
+- Complete control over approval workflows
+- Separate flag and segment configurations
+- Granular permission settings
+- Support for tag-based approvals
+- Flexible review requirements
 
-The script offers two operation modes:
+**ServiceNow Integration**:
+- Seamless ServiceNow approval flow
+- Template-based configuration
+- Justification field customization
+- Automatic status synchronization
+- Emergency bypass options
 
-1. **Add ServiceNow Workflow Approvals**
-   - Configures environments with ServiceNow integration
-   - Sets up all necessary approval settings:
-     * Required approvals with minimum count
-     * ServiceNow integration configuration
-     * Auto-apply and review settings
-     * Approval tags and bypass settings
-
-2. **Remove Workflow Approvals**
-   - Safely removes approval settings
-   - Handles both approvalSettings and resourceApprovalSettings
-   - Ensures clean removal of service configurations
-   - Maintains environment stability during removal
+**Approval Removal**:
+- Safe removal of approval settings
+- Handles both approval types:
+  * Flag targeting approvals
+  * Segment targeting approvals
+- Maintains environment stability
+- Verifies removal success
 
 Two workflow options are available:
 
